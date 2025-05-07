@@ -1,5 +1,28 @@
 from tortoise import fields
 from tortoise.models import Model
+from passlib.context import CryptContext  # Para cifrar las contraseñas
+
+# Configuramos el contexto de passlib
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+class Usuario(Model):
+    id = fields.IntField(pk=True)
+    nombre = fields.CharField(max_length=255)
+    email = fields.CharField(max_length=255, unique=True)
+    contrasena = fields.CharField(max_length=255)  # La contraseña cifrada
+    fecha_registro = fields.DatetimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.nombre
+
+    # Método para cifrar la contraseña
+    def hash_contrasena(self, contrasena: str):
+        return pwd_context.hash(contrasena)
+
+    # Método para verificar la contraseña
+    def verificar_contrasena(self, contrasena: str):
+        return pwd_context.verify(contrasena, self.contrasena)
+
 
 class Libro(Model):
     id = fields.IntField(pk=True)
@@ -16,15 +39,6 @@ class Libro(Model):
     class Meta:
         table = "libros"  # nombre explícito de la tabla (opcional)
 
-class Usuario(Model):
-    id = fields.IntField(pk=True)
-    nombre = fields.CharField(max_length=255)
-    tipo = fields.CharField(max_length=20)  # estudiante o docente
-    email = fields.CharField(max_length=255, unique=True)
-    fecha_registro = fields.DatetimeField(auto_now_add=True)
-
-    def __str__(self):
-        return self.nombre
 
 class Prestamo(Model):
     id = fields.IntField(pk=True)
@@ -37,16 +51,3 @@ class Prestamo(Model):
         return f"Préstamo de {self.libro.titulo} a {self.usuario.nombre}"
 
 __all__ = ["Libro", "Usuario", "Prestamo"]
-
-# models.py
-from tortoise import fields
-from tortoise.models import Model
-
-class Usuario(Model):
-    id = fields.IntField(pk=True)
-    email = fields.CharField(max_length=255, unique=True)
-    password = fields.CharField(max_length=255)
-    fecha_creacion = fields.DatetimeField(auto_now_add=True)
-
-    def __str__(self):
-        return f"Usuario: {self.email}"

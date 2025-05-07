@@ -1,13 +1,15 @@
 from fastapi import FastAPI, HTTPException
 from tortoise.contrib.fastapi import register_tortoise
-from app.models import Libro
+from app.models import Libro, Usuario
 from app.database import init_db, close_db
-from app.models import Usuario
+import bcrypt
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from app.schemas import UsuarioCrear, UsuarioLogin
 
-
+# Inicializa la aplicación FastAPI
 app = FastAPI()
 
-# Configurar la base de datos
+# Configuración de la base de datos
 @app.on_event("startup")
 async def startup():
     await init_db()
@@ -16,12 +18,13 @@ async def startup():
 async def shutdown():
     await close_db()
 
-# Endpoints de CRUD
+# Endpoint para obtener todos los libros
 @app.get("/libros")
 async def get_libros():
     libros = await Libro.all()
     return libros
 
+# Endpoint para obtener un libro específico por ID
 @app.get("/libros/{id}")
 async def get_libro(id: int):
     libro = await Libro.get_or_none(id=id)
@@ -29,6 +32,7 @@ async def get_libro(id: int):
         raise HTTPException(status_code=404, detail="Libro no encontrado")
     return libro
 
+# Endpoint para crear un nuevo libro
 @app.post("/libros")
 async def create_libro(titulo: str, autor: str, isbn: str, categoria: str, estado: str):
     libro = await Libro.create(
@@ -40,6 +44,7 @@ async def create_libro(titulo: str, autor: str, isbn: str, categoria: str, estad
     )
     return libro
 
+# Endpoint para actualizar un libro existente
 @app.put("/libros/{id}")
 async def update_libro(id: int, titulo: str, autor: str, isbn: str, categoria: str, estado: str):
     libro = await Libro.get_or_none(id=id)
@@ -54,6 +59,7 @@ async def update_libro(id: int, titulo: str, autor: str, isbn: str, categoria: s
     await libro.save()
     return libro
 
+# Endpoint para eliminar un libro
 @app.delete("/libros/{id}")
 async def delete_libro(id: int):
     libro = await Libro.get_or_none(id=id)
@@ -63,27 +69,22 @@ async def delete_libro(id: int):
     await libro.delete()
     return {"message": "Libro eliminado"}
 
-# Configuración para la base de datos
-register_tortoise(
-    app,
-    db_url='sqlite://db.sqlite3',
-    modules={'models': ['app.models']},
-    generate_schemas=True,
-    add_exception_handlers=True,
-)
-
+# Endpoint para obtener todos los usuarios
 @app.get("/usuarios")
 async def get_usuarios():
     return await Usuario.all()
 
+# Endpoint para obtener un usuario específico por ID
 @app.get("/usuarios/{id}")
 async def get_usuario(id: int):
     return await Usuario.get(id=id)
 
+# Endpoint para crear un nuevo usuario
 @app.post("/usuarios")
 async def create_usuario(nombre: str, tipo: str, email: str):
     return await Usuario.create(nombre=nombre, tipo=tipo, email=email)
 
+# Endpoint para actualizar un usuario existente
 @app.put("/usuarios/{id}")
 async def update_usuario(id: int, nombre: str, tipo: str, email: str):
     usuario = await Usuario.get(id=id)
@@ -93,22 +94,14 @@ async def update_usuario(id: int, nombre: str, tipo: str, email: str):
     await usuario.save()
     return usuario
 
+# Endpoint para eliminar un usuario
 @app.delete("/usuarios/{id}")
 async def delete_usuario(id: int):
     usuario = await Usuario.get(id=id)
     await usuario.delete()
     return {"message": "Usuario eliminado"}
 
-# main.py
-import bcrypt
-from fastapi import HTTPException, status
-from app.models import Usuario
-from app.schemas import UsuarioCrear, UsuarioLogin
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
-
-# Crear un nuevo usuario
+# Endpoint para registro de usuario
 @app.post("/registro")
 async def registro(usuario: UsuarioCrear):
     # Verificar si ya existe un usuario con el mismo email
@@ -123,7 +116,7 @@ async def registro(usuario: UsuarioCrear):
     
     return {"mensaje": "Usuario creado con éxito", "usuario": nuevo_usuario.email}
 
-# Iniciar sesión
+# Endpoint para login de usuario
 @app.post("/login")
 async def login(usuario: UsuarioLogin):
     # Verificar si el usuario existe
@@ -136,3 +129,12 @@ async def login(usuario: UsuarioLogin):
         raise HTTPException(status_code=401, detail="Credenciales incorrectas")
 
     return {"mensaje": "Inicio de sesión exitoso"}
+
+# Configuración para la base de datos
+register_tortoise(
+    app,
+    db_url='sqlite://db.sqlite3',
+    modules={'models': ['app.models']},
+    generate_schemas=True,
+    add_exception_handlers=True,
+)
