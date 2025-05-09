@@ -1,14 +1,15 @@
 from fastapi import FastAPI, HTTPException
-from fastapi.security import OAuth2PasswordRequestForm
 from tortoise.contrib.fastapi import register_tortoise
 from app.models import Libro, Usuario
-from app.schemas import UsuarioCrear, UsuarioLogin
 from app.database import init_db, close_db
 import bcrypt
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from app.schemas import UsuarioCreate, UsuarioLogin  # Cambié UsuarioCrear por UsuarioCreate
 
+# Inicializa la aplicación FastAPI
 app = FastAPI()
 
-# Eventos de inicio y cierre
+# Configuración de la base de datos
 @app.on_event("startup")
 async def startup():
     await init_db()
@@ -17,12 +18,13 @@ async def startup():
 async def shutdown():
     await close_db()
 
-# ----------- LIBROS -----------
-
+# Endpoint para obtener todos los libros
 @app.get("/libros")
 async def get_libros():
-    return await Libro.all()
+    libros = await Libro.all()
+    return libros
 
+# Endpoint para obtener un libro específico por ID
 @app.get("/libros/{id}")
 async def get_libro(id: int):
     libro = await Libro.get_or_none(id=id)
@@ -30,16 +32,19 @@ async def get_libro(id: int):
         raise HTTPException(status_code=404, detail="Libro no encontrado")
     return libro
 
+# Endpoint para crear un nuevo libro
 @app.post("/libros")
 async def create_libro(titulo: str, autor: str, isbn: str, categoria: str, estado: str):
-    return await Libro.create(
+    libro = await Libro.create(
         titulo=titulo,
         autor=autor,
         isbn=isbn,
         categoria=categoria,
         estado=estado
     )
+    return libro
 
+# Endpoint para actualizar un libro existente
 @app.put("/libros/{id}")
 async def update_libro(id: int, titulo: str, autor: str, isbn: str, categoria: str, estado: str):
     libro = await Libro.get_or_none(id=id)
@@ -54,6 +59,7 @@ async def update_libro(id: int, titulo: str, autor: str, isbn: str, categoria: s
     await libro.save()
     return libro
 
+# Endpoint para eliminar un libro
 @app.delete("/libros/{id}")
 async def delete_libro(id: int):
     libro = await Libro.get_or_none(id=id)
@@ -61,81 +67,74 @@ async def delete_libro(id: int):
         raise HTTPException(status_code=404, detail="Libro no encontrado")
 
     await libro.delete()
-    return {"mensaje": "Libro eliminado"}
+    return {"message": "Libro eliminado"}
 
-# ----------- USUARIOS -----------
-
+# Endpoint para obtener todos los usuarios
 @app.get("/usuarios")
 async def get_usuarios():
     return await Usuario.all()
 
+# Endpoint para obtener un usuario específico por ID
 @app.get("/usuarios/{id}")
 async def get_usuario(id: int):
-    usuario = await Usuario.get_or_none(id=id)
-    if usuario is None:
-        raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    return usuario
+    return await Usuario.get(id=id)
 
+# Endpoint para crear un nuevo usuario
 @app.post("/usuarios")
-async def create_usuario(nombre: str, tipo: str, email: str, password: str):
-    hashed_password = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
-    return await Usuario.create(nombre=nombre, tipo=tipo, email=email, password=hashed_password.decode("utf-8"))
+async def create_usuario(nombre: str, tipo: str, email: str):
+    return await Usuario.create(nombre=nombre, tipo=tipo, email=email)
 
-
+# Endpoint para actualizar un usuario existente
 @app.put("/usuarios/{id}")
 async def update_usuario(id: int, nombre: str, tipo: str, email: str):
-    usuario = await Usuario.get_or_none(id=id)
-    if usuario is None:
-        raise HTTPException(status_code=404, detail="Usuario no encontrado")
-
+    usuario = await Usuario.get(id=id)
     usuario.nombre = nombre
     usuario.tipo = tipo
     usuario.email = email
     await usuario.save()
     return usuario
 
+# Endpoint para eliminar un usuario
 @app.delete("/usuarios/{id}")
 async def delete_usuario(id: int):
-    usuario = await Usuario.get_or_none(id=id)
-    if usuario is None:
-        raise HTTPException(status_code=404, detail="Usuario no encontrado")
-
+    usuario = await Usuario.get(id=id)
     await usuario.delete()
-    return {"mensaje": "Usuario eliminado"}
+    return {"message": "Usuario eliminado"}
 
-# ----------- AUTENTICACIÓN -----------
-
+# Endpoint para registro de usuario
 @app.post("/registro")
-async def registro(usuario: UsuarioCrear):
+async def registro(usuario: UsuarioCreate):  # Cambié UsuarioCrear por UsuarioCreate
+    # Verificar si ya existe un usuario con el mismo email
     if await Usuario.filter(email=usuario.email).exists():
         raise HTTPException(status_code=400, detail="El usuario ya existe")
+    
+    # Hashear la contraseña
+    hashed_password = bcrypt.hashpw(usuario.contrasena.encode('utf-8'), bcrypt.gensalt())
+    
+    # Crear el usuario
+    nuevo_usuario = await Usuario.create(email=usuario.email, password=hashed_password)
+    
+    return {"mensaje": "Usuario creado con éxito", "usuario": nuevo_usuario.email}
 
-    hashed_password = bcrypt.hashpw(usuario.password.encode('utf-8'), bcrypt.gensalt())
-    nuevo_usuario = await Usuario.create(
-        email=usuario.email,
-        nombre=usuario.nombre,
-        tipo=usuario.tipo,
-        password=hashed_password.decode('utf-8')
-    )
-    return {"mensaje": "Usuario registrado", "usuario": nuevo_usuario.email}
-
+# Endpoint para login de usuario
 @app.post("/login")
 async def login(usuario: UsuarioLogin):
+    # Verificar si el usuario existe
     user = await Usuario.get_or_none(email=usuario.email)
     if not user:
         raise HTTPException(status_code=401, detail="Credenciales incorrectas")
 
-    if not bcrypt.checkpw(usuario.password.encode('utf-8'), user.password.encode('utf-8')):
+    # Verificar la contraseña
+    if not bcrypt.checkpw(usuario.contrasena.encode('utf-8'), user.password.encode('utf-8')):
         raise HTTPException(status_code=401, detail="Credenciales incorrectas")
 
     return {"mensaje": "Inicio de sesión exitoso"}
 
-# ----------- CONFIGURACIÓN TORTOISE -----------
-
+# Configuración para la base de datos
 register_tortoise(
     app,
-    db_url="sqlite://db.sqlite3",
-    modules={"models": ["app.models"]},
+    db_url='sqlite://db.sqlite3',
+    modules={'models': ['app.models']},
     generate_schemas=True,
     add_exception_handlers=True,
 )
