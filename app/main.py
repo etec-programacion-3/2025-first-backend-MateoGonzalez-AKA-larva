@@ -4,12 +4,10 @@ from app.models import Libro, Usuario
 from app.database import init_db, close_db
 import bcrypt
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from app.schemas import UsuarioCreate, UsuarioLogin  # Cambié UsuarioCrear por UsuarioCreate
+from app.schemas import UsuarioCreate, UsuarioLogin, LibroBase
 
-# Inicializa la aplicación FastAPI
 app = FastAPI()
 
-# Configuración de la base de datos
 @app.on_event("startup")
 async def startup():
     await init_db()
@@ -18,13 +16,13 @@ async def startup():
 async def shutdown():
     await close_db()
 
-# Endpoint para obtener todos los libros
+# -------------------- LIBROS --------------------
+
 @app.get("/libros")
 async def get_libros():
     libros = await Libro.all()
     return libros
 
-# Endpoint para obtener un libro específico por ID
 @app.get("/libros/{id}")
 async def get_libro(id: int):
     libro = await Libro.get_or_none(id=id)
@@ -32,7 +30,6 @@ async def get_libro(id: int):
         raise HTTPException(status_code=404, detail="Libro no encontrado")
     return libro
 
-# Endpoint para crear un nuevo libro
 @app.post("/libros")
 async def create_libro(titulo: str, autor: str, isbn: str, categoria: str, estado: str):
     libro = await Libro.create(
@@ -44,7 +41,6 @@ async def create_libro(titulo: str, autor: str, isbn: str, categoria: str, estad
     )
     return libro
 
-# Endpoint para actualizar un libro existente
 @app.put("/libros/{id}")
 async def update_libro(id: int, titulo: str, autor: str, isbn: str, categoria: str, estado: str):
     libro = await Libro.get_or_none(id=id)
@@ -59,32 +55,28 @@ async def update_libro(id: int, titulo: str, autor: str, isbn: str, categoria: s
     await libro.save()
     return libro
 
-# Endpoint para eliminar un libro
 @app.delete("/libros/{id}")
 async def delete_libro(id: int):
     libro = await Libro.get_or_none(id=id)
     if libro is None:
         raise HTTPException(status_code=404, detail="Libro no encontrado")
-
     await libro.delete()
     return {"message": "Libro eliminado"}
 
-# Endpoint para obtener todos los usuarios
+# -------------------- USUARIOS --------------------
+
 @app.get("/usuarios")
 async def get_usuarios():
     return await Usuario.all()
 
-# Endpoint para obtener un usuario específico por ID
 @app.get("/usuarios/{id}")
 async def get_usuario(id: int):
     return await Usuario.get(id=id)
 
-# Endpoint para crear un nuevo usuario
 @app.post("/usuarios")
 async def create_usuario(nombre: str, tipo: str, email: str):
     return await Usuario.create(nombre=nombre, tipo=tipo, email=email)
 
-# Endpoint para actualizar un usuario existente
 @app.put("/usuarios/{id}")
 async def update_usuario(id: int, nombre: str, tipo: str, email: str):
     usuario = await Usuario.get(id=id)
@@ -94,43 +86,42 @@ async def update_usuario(id: int, nombre: str, tipo: str, email: str):
     await usuario.save()
     return usuario
 
-# Endpoint para eliminar un usuario
 @app.delete("/usuarios/{id}")
 async def delete_usuario(id: int):
     usuario = await Usuario.get(id=id)
     await usuario.delete()
     return {"message": "Usuario eliminado"}
 
-# Endpoint para registro de usuario
+# -------------------- REGISTRO --------------------
+
 @app.post("/registro")
-async def registro(usuario: UsuarioCreate):  # Cambié UsuarioCrear por UsuarioCreate
-    # Verificar si ya existe un usuario con el mismo email
+async def registro(usuario: UsuarioCreate):
     if await Usuario.filter(email=usuario.email).exists():
         raise HTTPException(status_code=400, detail="El usuario ya existe")
-    
-    # Hashear la contraseña
-    hashed_password = bcrypt.hashpw(usuario.contrasena.encode('utf-8'), bcrypt.gensalt())
-    
-    # Crear el usuario
-    nuevo_usuario = await Usuario.create(email=usuario.email, password=hashed_password)
-    
+
+    nuevo_usuario = Usuario()
+    hashed_password = nuevo_usuario.hash_contrasena(usuario.contrasena)
+
+    nuevo_usuario = await Usuario.create(
+        nombre=usuario.nombre,
+        email=usuario.email,
+        contrasena=hashed_password,
+        rol=usuario.rol or "usuario"
+    )
+
     return {"mensaje": "Usuario creado con éxito", "usuario": nuevo_usuario.email}
 
-# Endpoint para login de usuario
+# -------------------- LOGIN --------------------
+
 @app.post("/login")
 async def login(usuario: UsuarioLogin):
-    # Verificar si el usuario existe
     user = await Usuario.get_or_none(email=usuario.email)
-    if not user:
+    if not user or not user.verificar_contrasena(usuario.contrasena):
         raise HTTPException(status_code=401, detail="Credenciales incorrectas")
+    return {"mensaje": "Inicio de sesión exitoso", "rol": user.rol}
 
-    # Verificar la contraseña
-    if not bcrypt.checkpw(usuario.contrasena.encode('utf-8'), user.password.encode('utf-8')):
-        raise HTTPException(status_code=401, detail="Credenciales incorrectas")
+# -------------------- DB CONFIG --------------------
 
-    return {"mensaje": "Inicio de sesión exitoso"}
-
-# Configuración para la base de datos
 register_tortoise(
     app,
     db_url='sqlite://db.sqlite3',
@@ -138,3 +129,21 @@ register_tortoise(
     generate_schemas=True,
     add_exception_handlers=True,
 )
+from fastapi import Depends, Header
+from typing import Optional
+
+async def get_current_user(x_email: Optional[str] = Header(None)):
+    if not x_email:
+        raise HTTPException(status_code=401, detail="No se proporcionó el email")
+
+    user = await Usuario.get_or_none(email=x_email)
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    return user
+
+async def admin_required(user: Usuario = Depends(get_current_user)):
+    if user.rol != "admin":
+        raise HTTPException(status_code=403, detail="Permisos insuficientes")
+    return user
+

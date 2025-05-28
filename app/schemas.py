@@ -7,8 +7,9 @@ from datetime import datetime
 class UsuarioBase(BaseModel):
     nombre: str
     email: str
+    rol: Optional[str] = "usuario"
 
-class UsuarioCreate(UsuarioBase):
+class UsuarioCreate(UsuarioBase): 
     contrasena: str
 
 class UsuarioLogin(BaseModel):
@@ -20,7 +21,7 @@ class UsuarioOut(UsuarioBase):
     fecha_registro: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # ----------- LIBROS -----------
 
@@ -30,3 +31,4 @@ class LibroBase(BaseModel):
     isbn: str
     categoria: str
     estado: str
+
