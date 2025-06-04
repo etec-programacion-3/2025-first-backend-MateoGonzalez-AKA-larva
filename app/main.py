@@ -8,7 +8,19 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from app.schemas import UsuarioCreate, UsuarioLogin, LibroBase
 from typing import Optional
 
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI()
+
+# Habilitar CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # O podés poner "http://localhost:5500" si usás Live Server
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 # Configuración CORS para permitir requests desde frontend
 origins = [
